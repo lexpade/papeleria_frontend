@@ -104,7 +104,7 @@ export default ({
             usuario_Venta: 123,
             numero_cliente: 360,
             lista_detalles: [],
-            ficha_detalle: { cantidad_vendida: 0, subtotal_item: 0.0, factura: {numero_factura:0}, producto: {codigo_producto:0} },
+            ficha_detalle: { cantidad_vendida: 0, subtotal_item: 0.0, factura: { numero_factura: 0 }, producto: { codigo_producto: 0 } },
             ficha_factura: { fecha_venta: '', subtotal_venta: 0, total_venta: 0, valor_iva: 0, cliente: { id_cliente: 0 }, usuario: { id_usuarios: 0 } },
             lista_productos: [],
             inDatosDisable: true,
@@ -123,7 +123,7 @@ export default ({
             id_lista: 1,
             item_aEliminar: '',
             item: 0,
-            num_factura: 2,
+            num_factura: 0,
             urly: 'http://localhost:8080'
 
         }
@@ -131,16 +131,12 @@ export default ({
     methods: {
         horaVer() {
             let hora = new Date(); //.toJSON().slice(0, 19)
-           return hora.toLocaleTimeString();
+            return hora.toLocaleTimeString();
         },
-        verLista() {
-            //console.log(this.lista_productos[0]);
-
-            //console.log(this.lista_productos[1].nombre);
-
-            //console.log(this.lista_productos[2]);
-
-
+        finalizarVenta() {
+            this.realizarFactura();            
+            setTimeout(() => this.actualizarInventario(), 500);
+            this.consultarFacturas();
         },
         authToken() {
             let user = JSON.parse(localStorage.getItem('user'));
@@ -151,7 +147,6 @@ export default ({
             }
         },
         eliminarItem() {
-            console.log(this.enliste_ventas);
             if (this.item_aEliminar == '') {
                 this.mensajeError = 'Digite el numero del Item'
             }
@@ -163,8 +158,6 @@ export default ({
                 this.lista_productos.splice(this.item, 1);
                 this.lista_detalles.splice(this.item, 1);
             }
-            console.log("Dios Ayudame");
-            console.log(this.enliste_ventas);
             this.entablarDetalles(this.enliste_ventas);
             this.item_aEliminar = '';
 
@@ -191,7 +184,7 @@ export default ({
                 if (this.itemStock < parseInt(this.cantidad_vendida)) {
                     this.cantidad_vendida = this.itemStock;
                 }
-                var subtotal = parseFloat(this.cantidad_vendida * this.temp_data.costo_unitario);
+                var subtotal = parseFloat(this.cantidad_vendida) * this.temp_data.costo_unitario;
 
                 this.enliste_ventas.push({
                     'nombre': this.temp_data.nombre_producto,
@@ -199,7 +192,7 @@ export default ({
                     'cantidad': parseInt(this.cantidad_vendida),
                     'subtotal': subtotal,
                 });
-                this.ficha_detalle = { cantidad_vendida: this.cantidad_vendida, subtotal_item: subtotal, factura: {numero_factura:0}, producto: { codigo_producto: this.temp_data.nombre_producto }};
+                this.ficha_detalle = { cantidad_vendida: parseInt(this.cantidad_vendida), subtotal_item: subtotal, factura: { numero_factura: 0 }, producto: { codigo_producto: this.temp_data.codigo_producto } };
                 this.inDatosDisable3 = false;
                 this.entablarDetalles(this.enliste_ventas);
                 this.nombre_producto = '';
@@ -212,18 +205,16 @@ export default ({
                 this.mensajeError = '';
             } else { this.mensajeError = "cantidad vendida no esta definida" }
         },
-        finalizarVenta() {
-            console.log("Este es el total de la factura " + this.total_vendido);     
-            let horaf = this.horaVer;   
+        realizarFactura() {
+            let horaf = this.horaVer;
             this.ficha_factura = {
                 fecha_venta: horaf,
                 subtotal_venta: this.total_vendido - (this.total_vendido * 19 / 100),
                 total_venta: this.total_vendido,
                 valor_iva: (this.total_vendido * 19 / 100),
                 cliente: { id_cliente: this.numero_cliente },
-                usuario: { id_usuarios: this.usuario_Venta }            
+                usuario: { id_usuarios: this.usuario_Venta }
             };
-            console.log("Este es el total de la factura " + this.total_vendido); 
             const options = {
                 method: 'POST',
                 body: JSON.stringify(this.ficha_factura),
@@ -240,19 +231,64 @@ export default ({
                         this.mensajeError = error.message;
                         throw error;
                     } else {
-                        const data = await response.json();
-                        this.num_factura = data.numero_factura;
-                        console.log(this.num_factura);
+                        const data = await response.json();                        
+                        this.codigo_producto = data.numero_factura;
                     }
                 });
-            this.finalizarDetalles(this.num_factura);
         },
-        finalizarDetalles(num_fac){            
+        actualizarInventario() {
+            let id_P;
             for (let i = 0; i < this.lista_detalles.length; i++) {
-                this.lista_detalles[i].factura.numero_factura = num_fac;
-            
+                this.lista_detalles[i].factura.numero_factura = parseInt(this.codigo_producto);
+                this.lista_productos[i].cantidad_stock -= parseInt(this.lista_detalles[i].cantidad_vendida);
+                window.alert(this.lista_detalles[i].factura.numero_factura);
             }
-            console.log(this.lista_detalles[0])
+            for (let j = 0; j < this.lista_detalles.length; j++) {
+                id_P = this.lista_productos[j].codigo_producto;
+                const options = {
+                    method: 'POST',
+                    body: JSON.stringify(this.lista_detalles[j]),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': this.authToken()
+                    }
+                };
+                window.alert(this.lista_detalles[0].factura.numero_factura);
+                fetch(this.urly + '/api/detalle_ventas', options)
+                    .then(async (response) => {
+                        if (!response.ok) {
+                            const error = new Error(response.statusText);
+                            error.json = response.json();
+                            this.mensajeError = error.message;
+                            throw error;
+                        } else {
+                            const data = await response.json();
+                            console.log(data);
+                        }
+                    });
+                const requestOptions = {
+                    method: 'PUT',
+                    body: JSON.stringify(this.lista_productos[j]),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': this.authToken()
+                    }
+                }
+
+                fetch(this.urly + '/api/productos/' + id_P, requestOptions)
+                    .then(async response => {
+                        if (!response.ok) {
+                            const error = new Error(response.statusText);
+                            error.json = response.json();
+                            this.mensajeError = error.message;
+                            throw error;
+                        } else {
+                            const data = await response.json();
+                            console.log(data);
+                        }
+                    })
+                    .catch(error => console.log(error))
+            }
         },
         async agregarProducto(codPro) {
             if (codPro != '') {
@@ -280,7 +316,7 @@ export default ({
                             this.nombre_producto = data.nombre_producto;
                             this.valor_venitem = data.costo_unitario;
                             this.itemStock = data.cantidad_stock;
-                            this.cantidad_vendida = 1;
+                            this.cantidad_vendida = '';
                         }
                     });
             }
@@ -317,9 +353,6 @@ export default ({
     },
     mounted() {
         this.consultarFacturas();
-    },
-    unmounted() {
-        this.verLista();
     }
 })
 </script>
